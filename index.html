@@ -1,0 +1,125 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Leitor de Exames Laboratoriais</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f7fa;
+      color: #333;
+      margin: 0;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      color: #2a5d9f;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+    }
+    input[type="file"], button {
+      margin-top: 15px;
+      padding: 10px 15px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background-color: #2a5d9f;
+      color: white;
+      cursor: pointer;
+      border: none;
+    }
+    button:hover {
+      background-color: #1d4478;
+    }
+    #output {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #eef2f7;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      min-height: 100px;
+      white-space: pre-wrap;
+    }
+    #copiarBtn {
+      margin-top: 10px;
+    }
+    .footer {
+      margin-top: 30px;
+      font-size: 13px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>Leitor de Exames Laboratoriais</h1>
+  <div class="container">
+    <input type="file" id="imageInput" accept="image/*"><br>
+    <button onclick="processImage()">Ler Exame</button>
+    <div id="output">Resultado formatado aparecerá aqui...</div>
+    <button id="copiarBtn" onclick="copiarTexto()">Copiar resultados</button>
+  </div>
+  <div class="footer">Desenvolvido para uso acadêmico</div>
+
+  <script>
+    function processImage() {
+      const imageInput = document.getElementById('imageInput');
+      const output = document.getElementById('output');
+      output.textContent = 'Processando imagem...';
+
+      if (!imageInput.files[0]) {
+        output.textContent = 'Por favor, selecione uma imagem.';
+        return;
+      }
+
+      Tesseract.recognize(
+        imageInput.files[0],
+        'por',
+        { logger: m => console.log(m) }
+      ).then(({ data: { text } }) => {
+        const linhas = text.split('\n');
+
+        // Procurar data da coleta
+        const dataMatch = text.match(/(Data|Coleta).*?(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+        let resultado = dataMatch ? `Data da coleta: ${dataMatch[2]} // ` : '';
+
+        const exames = linhas.filter(linha =>
+          /(Hemoglobina|Hematócrito|Leucócitos|Plaquetas|Creatinina|Uréia|Glicose|AST|ALT|TGO|TGP|Fosfatase|Bilirrubina|Sódio|Potássio|PCR|TSH|T4|Gama|Albumina)/i.test(linha)
+        ).map(linha => {
+          const match = linha.match(/([\w()çÇéÉíÍãõâêô\-]+)[\s:]+([\d.,]+)[\s]*([\w/%µµLmgdDL\^]*)/i);
+          if (match) {
+            const nome = match[1].trim();
+            const valor = match[2].trim();
+            const unidade = match[3] ? match[3].trim() : '';
+            return `${nome} ${valor}${unidade ? ' ' + unidade : ''}`;
+          }
+          return null;
+        }).filter(e => e);
+
+        resultado += exames.join(' // ');
+        output.textContent = resultado || "Nenhum exame reconhecido.";
+      });
+    }
+
+    function copiarTexto() {
+      const texto = document.getElementById('output').textContent;
+      navigator.clipboard.writeText(texto).then(() => {
+        const btn = document.getElementById('copiarBtn');
+        btn.textContent = 'Copiado!';
+        setTimeout(() => { btn.textContent = 'Copiar resultados'; }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
