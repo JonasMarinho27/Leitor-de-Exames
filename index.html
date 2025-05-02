@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Extrator de Exames Clínicos Aprimorado</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      background-color: #f8f9fa;
+    }
+    .card {
+      max-width: 900px;
+      margin: 50px auto;
+    }
+    #output {
+      min-height: 120px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card shadow p-4">
+      <h1 class="text-center mb-4">Extrator de Exames Clínicos Aprimorado</h1>
+      <div class="mb-3">
+        <input type="file" id="imageInput" accept="image/*,application/pdf" class="form-control">
+      </div>
+      <div class="mb-3 text-center">
+        <button onclick="processarArquivo()" class="btn btn-primary me-2">Extrair</button>
+        <button onclick="copiarTexto()" id="copiarBtn" class="btn btn-secondary me-2">Copiar</button>
+        <button onclick="gerarPDF()" class="btn btn-success">Gerar PDF</button>
+      </div>
+      <div id="output" class="border p-3 rounded bg-white">O resultado aparecerá aqui...</div>
+    </div>
+  </div>
+
+  <script>
+    const parametrosValidos = 
+["hemoglobina", "hematocrito", "leucocitos", "plaquetas", "vcm", "hcm", "chcm", "rdw",
+"segmentados", "neutrofilos", "eosinofilos", "linfocitos", "monocitos", "basofilos", 
+"hemacias", "blastos", "linfocitos reativos", "reticulocitos", "eritrograma",
+"glicose", "glicemia", "colesterol", "colesterol total", "hdl", "ldl", "vldl", "triglicerideos", "triglicerides", "triglicérides",
+"tgo", "ast", "tgp", "alt", "gama gt", "ggt", "fosfatase alcalina", "bilirrubina total", "bilirrubina direta", "bilirrubina indireta",
+"enzimas hepaticas", "transaminases", "albumina", "globulina", "proteinas totais",
+"creatinina", "ureia", "clearance de creatinina", "tfg", "acido urico", "ácido úrico",
+"sodio", "potassio", "calcio", "calcio ionizado", "magnesio", "fosforo", "cloro",
+"tsh", "t4 livre", "t4 total", "t3 livre", "t3 total", "anti tpo", "anti tireoglobulina",
+"lh", "fsh", "estradiol", "progesterona", "prolactina", "testosterona", "cortisol", "acth", "insulina",
+"pcr", "proteina c reativa", "vhs", "ferritina", "procalcitonina", "dímero d",
+"ph", "pco2", "po2", "hco3", "be", "sato2", "lactato",
+"densidade urinaria", "ph urinario", "proteinas urinarias", "hemacias urinarias", "leucocitos urinarios",
+"nitrito", "corpos cetonicos", "urobilinogenio", "cetona", "cetonas",
+"troponina", "ck", "ck-mb", "bnp", "pro-bnp",
+"tap", "inr", "ttpa", "tempo de tromboplastina", "tempo de protrombina", "fibrinogenio",
+"vitamina d", "vitamina b12", "acido folico", "ácido fólico", "folato",
+"antigeno carcinoembrionario", "cea", "ca 125", "ca 19.9", "ca 15.3", "psa", "beta hcg"]
+;
+
+    function normalizar(texto) {
+      return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    }
+
+    function tentarCorrigirNumero(valor, nomeParam) {
+      let num = parseFloat(valor.replace(',', '.'));
+      if (!isNaN(num)) {
+        if (num > 100 && ["hemoglobina", "hcm", "vcm", "tgo", "tgp"].includes(nomeParam)) {
+          const str = valor.toString();
+          if (str.length === 3) {
+            return (parseInt(str[0]) + "," + str.slice(1));
+          }
+        }
+      }
+      return valor;
+    }
+
+    async function processarArquivo() {
+      const input = document.getElementById("imageInput");
+      const output = document.getElementById("output");
+      output.textContent = "Processando arquivo...";
+
+      const file = input.files[0];
+      if (!file) {
+        output.textContent = "Selecione um arquivo válido.";
+        return;
+      }
+
+      if (file.type === "application/pdf") {
+        const reader = new FileReader();
+        reader.onload = async function () {
+          const pdfData = new Uint8Array(reader.result);
+          const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+          let fullText = "";
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const strings = content.items.map(item => item.str);
+            fullText += strings.join(" ") + "\n";
+          }
+          processarTexto(fullText);
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        Tesseract.recognize(file, 'por', { logger: m => console.log(m) })
+          .then(({ data: { text } }) => processarTexto(text))
+          .catch(err => output.textContent = "Erro: " + err.message);
+      }
+    }
+
+    function processarTexto(text) {
+      const output = document.getElementById("output");
+      const linhas = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const resultados = [];
+
+      linhas.forEach(l => {
+        const valores = l.match(/([0-9]{1,3}[.,]?[0-9]{0,3})/g);
+        if (valores && valores.length > 0) {
+          const nomeBruto = l.split(/[0-9]/)[0].trim().replace(/[:\-]/g, '');
+          const nomeNormalizado = normalizar(nomeBruto);
+          const parametro = parametrosValidos.find(p => nomeNormalizado.includes(p));
+          if (parametro) {
+            const valorCorrigido = tentarCorrigirNumero(valores[0], parametro);
+            resultados.push(`${nomeBruto} ${valorCorrigido}`);
+          }
+        }
+      });
+
+      output.textContent = resultados.length > 0
+        ? resultados.join(' // ')
+        : "Nenhum parâmetro clínico relevante encontrado.";
+    }
+
+    function copiarTexto() {
+      const texto = document.getElementById("output").textContent;
+      const btn = document.getElementById("copiarBtn");
+      navigator.clipboard.writeText(texto).then(() => {
+        btn.textContent = "Copiado!";
+        setTimeout(() => btn.textContent = "Copiar", 2000);
+      });
+    }
+
+    function gerarPDF() {
+      const texto = document.getElementById("output").textContent;
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(12);
+      doc.text(texto, 10, 10, { maxWidth: 180 });
+      doc.save("resultado_exames.pdf");
+    }
+  </script>
+</body>
+</html>
